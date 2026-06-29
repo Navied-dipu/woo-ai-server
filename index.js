@@ -49,7 +49,7 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     });
-    const { ObjectId } = require("mongodb"); // Ensure ObjectId is imported
+
 
     // ... your existing GET route ...
 
@@ -57,7 +57,7 @@ async function run() {
     app.patch("/api/users/:id", async (req, res) => {
       try {
         const id = req.params.id;
-        const { status } = req.body; // Expecting { "status": "new_status" } in the request body
+        const { status, role } = req.body; // Expecting { "status": "new_status", "role": "new_role" } in the request body
 
         // Validate if the provided ID is a valid MongoDB ObjectId
         if (!ObjectId.isValid(id)) {
@@ -258,12 +258,12 @@ async function run() {
     });
 
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!",
-    );
+    // await client.connect();
+    // // Send a ping to confirm a successful connection
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!",
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
