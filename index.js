@@ -23,6 +23,8 @@ async function run() {
     const promptsCollection = db.collection("prompts");
     const savedCollection = db.collection("saved");
     const usersCollection = db.collection("user");
+    const planCollection = db.collection("plan");
+    const subscriptionCollection = db.collection("subscription");
     const sessionCollection = db.collection("session");
     const verifyToken = async (req, res, next) => {
       console.log("headers", req.headers);
@@ -44,14 +46,66 @@ async function run() {
       console.log(user);
       next();
     };
-    app.get("/api/users", async (req, res) => {
+    // user , creator, admin middleware
+    const verifyUser = async (req, res, next) => {
+      if (req.user?.role !== "user") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
+    // must be used after verifyToken middleware
+    const verifyCreator = async (req, res, next) => {
+      if (req.user?.role !== "creator") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
+    // must be used after verifyToken middleware
+    const verifyAdmin = async (req, res, next) => {
+      if (req.user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+    app.get("/api/users", verifyToken, verifyAdmin, async (req, res) => {
       const cursor = usersCollection.find();
       const result = await cursor.toArray();
       res.send(result);
     });
 
-
     // ... your existing GET route ...
+    // plan api
+    app.get("/api/plan", async (req, res) => {
+      const query = {};
+      if (req.query.plan_id) {
+        query.id = req.query.plan_id;
+      }
+
+      const result = await planCollection.findOne(query);
+      res.send(result);
+    });
+    // subcription api
+    app.post("/api/subscriptions", verifyToken, verifyUser, async (req, res) => {
+      const data = req.body;
+      const newData = {
+        ...data,
+        createdAt: new Date(),
+      };
+      const result = await subscriptionCollection.insertOne(newData);
+
+      // Proactively update user's plan and role in user collection
+      if (data.email && data.planId) {
+        const updateDoc = { $set: { plan: data.planId } };
+        if (data.planId.startsWith("creator")) {
+          updateDoc.$set.role = "creator";
+        }
+        await usersCollection.updateOne({ email: data.email }, updateDoc);
+      }
+
+      res.send(result);
+    });
 
     // PATCH API to update user status
     app.patch("/api/users/:id", async (req, res) => {
@@ -88,17 +142,90 @@ async function run() {
       const prompts = await promptsCollection.find().toArray();
       res.send(prompts);
     });
+
+    // Express Backend
+    app.get("/api/prompts/user/:userId", async (req, res) => {
+      try {
+        const id = req.params.userId;
+        const query = { userId: id };
+
+        const prompts = await promptsCollection.find(query).toArray();
+        res.send(prompts);
+      } catch (error) {
+        console.error("Error fetching user prompts:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
+
+    app.patch("/api/prompts/:id", async (req, res) => {
+      try {
+        const promptId = req.params.id;
+        const updates = req.body; // No more loggedInUserId extraction
+
+        // Secure Filter: Only match by the prompt's ID
+        const filter = {
+          _id: new ObjectId(promptId),
+        };
+
+        // Prevent overriding system fields accidentally
+        delete updates._id;
+
+        const updateDoc = {
+          $set: updates,
+        };
+
+        const result = await promptsCollection.updateOne(filter, updateDoc);
+
+        // If matchedCount is 0, it means the prompt ID doesn't exist in the database
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ message: "Prompt not found" });
+        }
+
+        res.send({ message: "Prompt updated successfully", result });
+      } catch (error) {
+        console.error("Error updating prompt:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
+
+    app.delete("/api/prompts/:promptId", async (req, res) => {
+      try {
+        const promptId = req.params.promptId; // Target the specific prompt ID from the URL parameter
+        console.log(promptId);
+        // FIX: Match by the unique MongoDB _id
+        const query = { _id: new ObjectId(promptId) };
+
+        const result = await promptsCollection.deleteOne(query);
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Prompt not found" });
+        }
+
+        res.send({ message: "Prompt deleted successfully", result });
+      } catch (error) {
+        console.error("Error deleting prompt:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
+
+   
     app.get("/api/prompts/:id", async (req, res) => {
-      const { id } = req.params;
-      const prompt = await promptsCollection.findOne({ _id: new ObjectId(id) });
-      res.send(prompt);
+      try {
+        const { id } = req.params;
+        const prompt = await promptsCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        res.json(prompt);
+      } catch (error) {
+        console.error("Error fetching prompt:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
     });
     app.post("/api/prompts", async (req, res) => {
       const prompt = req.body;
       const result = await promptsCollection.insertOne(prompt);
       res.send(result);
     });
-
 
     // PATCH API to update prompt status by ID
     app.patch("/api/prompts/:id", async (req, res) => {
@@ -176,7 +303,7 @@ async function run() {
       }
     });
     // saved collection
-    app.post("/api/saved", async (req, res) => {
+    app.post("/api/saved", verifyToken, verifyUser, async (req, res) => {
       try {
         const { promptId, userId } = req.body;
 
@@ -211,12 +338,12 @@ async function run() {
       }
     });
 
-    app.get("/api/saved", async (req, res) => {
+    app.get("/api/saved", verifyToken, verifyUser, async (req, res) => {
       const results = await savedCollection.find().toArray();
       res.send(results);
     });
 
-    app.get("/api/saved/:userId", async (req, res) => {
+    app.get("/api/saved/:userId", verifyToken, verifyUser, async (req, res) => {
       try {
         const userId = req.params.userId;
 
@@ -235,7 +362,7 @@ async function run() {
         res.status(500).send({ error: "Internal server error" });
       }
     });
-    app.delete("/api/saved/:userId/:promptId", async (req, res) => {
+    app.delete("/api/saved/:userId/:promptId", verifyToken, verifyUser, async (req, res) => {
       try {
         const { userId, promptId } = req.params;
 
