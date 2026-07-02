@@ -27,7 +27,7 @@ async function run() {
     const subscriptionCollection = db.collection("subscription");
     const sessionCollection = db.collection("session");
     const verifyToken = async (req, res, next) => {
-      console.log("headers", req.headers);
+      // console.log("headers", req.headers);
       const authHeader = req.headers?.authorization;
       if (!authHeader) {
         return res.status(401).send({ massage: "unauthorized access" });
@@ -43,7 +43,7 @@ async function run() {
         _id: userId,
       };
       const user = await usersCollection.findOne(userQuery);
-      console.log(user);
+      // console.log(user);
       next();
     };
     // user , creator, admin middleware
@@ -69,7 +69,7 @@ async function run() {
       }
       next();
     };
-    app.get("/api/users", verifyToken, verifyAdmin, async (req, res) => {
+    app.get("/api/users", verifyToken, async (req, res) => {
       const cursor = usersCollection.find();
       const result = await cursor.toArray();
       res.send(result);
