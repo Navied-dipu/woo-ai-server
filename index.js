@@ -303,7 +303,7 @@ async function run() {
       }
     });
     // saved collection
-    app.post("/api/saved", verifyToken, verifyUser, async (req, res) => {
+    app.post("/api/saved",  async (req, res) => {
       try {
         const { promptId, userId } = req.body;
 
@@ -338,12 +338,12 @@ async function run() {
       }
     });
 
-    app.get("/api/saved", verifyToken, verifyUser, async (req, res) => {
+    app.get("/api/saved",  async (req, res) => {
       const results = await savedCollection.find().toArray();
       res.send(results);
     });
 
-    app.get("/api/saved/:userId", verifyToken, verifyUser, async (req, res) => {
+    app.get("/api/saved/:userId",  async (req, res) => {
       try {
         const userId = req.params.userId;
 
@@ -362,7 +362,7 @@ async function run() {
         res.status(500).send({ error: "Internal server error" });
       }
     });
-    app.delete("/api/saved/:userId/:promptId", verifyToken, verifyUser, async (req, res) => {
+    app.delete("/api/saved/:userId/:promptId",  async (req, res) => {
       try {
         const { userId, promptId } = req.params;
 
