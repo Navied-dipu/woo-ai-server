@@ -38,12 +38,25 @@ async function run() {
       }
       const query = { token: token };
       const session = await sessionCollection.findOne(query);
+      if (!session) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
       const userId = session.userId;
-      const userQuery = {
-        _id: userId,
-      };
-      const user = await usersCollection.findOne(userQuery);
-      // console.log(user);
+      // Note: better-auth stores userId as a string in the session, so we match it directly (or convert if needed)
+      // Usually usersCollection _id is an ObjectId, but better-auth uses string IDs for MongoDB by default in some setups.
+      // We will try string first, then ObjectId.
+      let userQuery = { _id: userId };
+      let user = await usersCollection.findOne(userQuery);
+      
+      if (!user && ObjectId.isValid(userId)) {
+          userQuery = { _id: new ObjectId(userId) };
+          user = await usersCollection.findOne(userQuery);
+      }
+
+      if (!user) {
+         return res.status(401).send({ message: "unauthorized access" });
+      }
+      req.user = user;
       next();
     };
     // user , creator, admin middleware
@@ -87,7 +100,7 @@ async function run() {
       res.send(result);
     });
     // subcription api
-    app.post("/api/subscriptions", verifyToken, verifyUser, async (req, res) => {
+    app.post("/api/subscriptions", verifyToken, async (req, res) => {
       const data = req.body;
       const newData = {
         ...data,
